@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B&I Studio - Cephe Savunması</title>
+    <style>
+        body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #111; font-family: 'Courier New', Courier, monospace; overflow: hidden; user-select: none; }
+        canvas { border: 4px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.5); image-rendering: pixelated; cursor: crosshair; }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 800;
+canvas.height = 600;
+
+let gameState = 'MENU'; 
+let score = 0;
+let missedEnemies = 0; // Kaçan asker sayısı
+let enemies = [];
+let particles = [];
+let playBtnScale = 1;
+
+const COLORS = {
+    osmanli: '#2c52ed', osmanliKusak: '#d41e1e', rus: '#1a5d1a',
+    toprak: '#8b5a2b', cimen: '#4caf50', siper: '#c2b280'
+};
+
+class Enemy {
+    constructor() {
+        this.reset();
+    }
+    reset() {
+        this.width = 40;
+        this.height = 60;
+        this.x = canvas.width + Math.random() * 300;
+        this.y = 100 + Math.random() * 400;
+        this.speed = 1.2 + Math.random() * 2;
+        this.isDead = false;
+        this.deathTimer = 0;
+        this.walkCycle = 0;
+    }
+    update() {
+        if (gameState !== 'PLAYING') return;
+        if (!this.isDead) {
+            this.x -= this.speed;
+            this.walkCycle += 0.15;
+            // Siperi geçme kontrolü
+            if (this.x < 150) {
+                missedEnemies++;
+                this.reset();
+                if (missedEnemies >= 5) gameState = 'GAMEOVER';
+            }
+        } else {
+            this.deathTimer++;
+        }
+    }
+    draw() {
+        ctx.save();
+        if (this.isDead) {
+            ctx.translate(this.x, this.y + this.height);
+            ctx.rotate(-Math.PI / 2);
+            ctx.translate(-this.x, -(this.y + this.height));
+            ctx.globalAlpha = Math.max(0, 1 - this.deathTimer / 30);
+        }
+        ctx.fillStyle = COLORS.rus;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.fillStyle = '#ffdbac'; 
+        ctx.fillRect(this.x + 5, this.y - 15, 25, 20);
+        ctx.fillStyle = 'black';
+        ctx.fillRect(this.x + 5, this.y - 20, 25, 8);
+        if (!this.isDead) {
+            let legOffset = Math.sin(this.walkCycle) * 10;
+            ctx.fillStyle = 'black';
+            ctx.fillRect(this.x + 5, this.y + this.height, 10, 10 + legOffset);
+            ctx.fillRect(this.x + 25, this.y + this.height, 10, 10 - legOffset);
+        }
+        ctx.restore();
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y; this.color = color;
+        this.size = Math.random() * 4 + 2;
+        this.vx = (Math.random() - 0.5) * 8;
+        this.vy = (Math.random() - 0.5) * 8;
+        this.life = 1.0;
+    }
+    update() { this.x += this.vx; this.y += this.vy; this.life -= 0.04; }
+    draw() { ctx.globalAlpha = this.life; ctx.fillStyle = this.color; ctx.fillRect(this.x, this.y, this.size, this.size); ctx.globalAlpha = 1; }
+}
+
+function drawUI() {
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Leş: ${score}`, 20, 30);
+    ctx.fillStyle = missedEnemies >= 4 ? 'red' : 'white';
+    ctx.fillText(`Kaçan: ${missedEnemies} / 5`, 20, 60);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(canvas.width - 130, canvas.height - 50, 120, 40);
+    ctx.fillStyle = 'white';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('MENÜYE DÖN', canvas.width - 70, canvas.height - 25);
+}
+
+function drawGameOver() {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'red';
+    ctx.font = 'bold 60px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('CEPHE DÜŞTÜ!', canvas.width/2, canvas.height/2 - 20);
+    ctx.fillStyle = 'white';
+    ctx.font = '24px Arial';
+    ctx.fillText(`Skor: ${score} - Devam etmek için tıkla`, canvas.width/2, canvas.height/2 + 40);
+}
+
+function resetGame() {
+    score = 0;
+    missedEnemies = 0;
+    enemies = Array.from({length: 6}, () => new Enemy());
+    particles = [];
+    gameState = 'PLAYING';
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    if (gameState === 'MENU') {
+        if (mouseX > 300 && mouseX < 500 && mouseY > 160 && mouseY < 240) {
+            playBtnScale = 0.9;
+            setTimeout(resetGame, 150);
+        }
+    } else if (gameState === 'GAMEOVER') {
+        gameState = 'MENU';
+    } else {
+        if (mouseX > canvas.width - 130 && mouseY > canvas.height - 50) {
+            gameState = 'MENU';
+            return;
+        }
+        // Ateş efekti
+        for(let i=0; i<8; i++) particles.push(new Particle(120, 275, 'yellow'));
+        
+        enemies.forEach(enemy => {
+            if (!enemy.isDead && mouseX > enemy.x && mouseX < enemy.x + enemy.width && mouseY > enemy.y && mouseY < enemy.y + enemy.height) {
+                enemy.isDead = true;
+                score++;
+                for(let i=0; i<12; i++) particles.push(new Particle(mouseX, mouseY, 'red'));
+            }
+        });
+    }
+});
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (gameState === 'MENU') {
+        // Menü çizimi (Önceki kodla aynı)
+        ctx.fillStyle = 'black'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.save(); ctx.translate(canvas.width/2, 200); ctx.scale(playBtnScale, playBtnScale);
+        ctx.fillStyle = '#00ff00'; ctx.beginPath(); ctx.roundRect(-100, -40, 200, 80, 20); ctx.fill();
+        ctx.fillStyle = '#004400'; ctx.font = 'bold 40px Arial'; ctx.textAlign = 'center'; ctx.fillText('PLAY', 0, 15); ctx.restore();
+        ctx.fillStyle = '#888'; ctx.font = '60px Arial'; ctx.textAlign = 'center'; ctx.fillText('B&I', canvas.width/2, 350);
+        ctx.fillText('Studio', canvas.width/2, 420);
+    } else if (gameState === 'PLAYING' || gameState === 'GAMEOVER') {
+        // Zemin ve Siper
+        ctx.fillStyle = COLORS.toprak; ctx.fillRect(0, 0, 150, canvas.height);
+        ctx.fillStyle = COLORS.cimen; ctx.fillRect(150, 0, canvas.width-150, canvas.height);
+        ctx.fillStyle = COLORS.siper;
+        for(let i=0; i<canvas.height; i+=80) { ctx.beginPath(); ctx.ellipse(150, i+40, 30, 50, 0, 0, Math.PI*2); ctx.fill(); }
+        
+        // Oyuncu
+        ctx.fillStyle = COLORS.osmanli; ctx.fillRect(50, 250, 40, 80);
+        ctx.fillStyle = COLORS.osmanliKusak; ctx.fillRect(50, 285, 40, 10); ctx.fillRect(55, 225, 30, 25);
+        ctx.fillStyle = '#ffdbac'; ctx.fillRect(55, 240, 30, 20);
+        ctx.fillStyle = 'black'; ctx.fillRect(80, 270, 40, 10);
+
+        enemies.forEach((enemy, i) => { enemy.update(); enemy.draw(); if(enemy.isDead && enemy.deathTimer > 30) { enemy.reset(); } });
+        particles.forEach((p, i) => { p.update(); p.draw(); if(p.life <= 0) particles.splice(i, 1); });
+        
+        drawUI();
+        if (gameState === 'GAMEOVER') drawGameOver();
+    }
+    requestAnimationFrame(gameLoop);
+}
+gameLoop();
+</script>
+</body>
+</html>
